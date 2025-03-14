@@ -1,163 +1,121 @@
 import timeit
+import matplotlib.pyplot as plt
 from functools import lru_cache
 
 
-class Node:
-    def __init__(self, data, parent=None):
-        self.data = data
-        self.parent = parent
-        self.left_node = None
-        self.right_node = None
+@lru_cache(maxsize=None)
+def fibonacci_lru(n):
+    if n < 2:
+        return n
+    return fibonacci_lru(n - 1) + fibonacci_lru(n - 2)
+
+
+class SplayNode:
+    def __init__(self, key, value):
+        self.key = key
+        self.value = value
+        self.left = None
+        self.right = None
 
 
 class SplayTree:
     def __init__(self):
         self.root = None
 
-    def insert(self, data):
-        if self.root is None:
-            self.root = Node(data)
+    def _splay(self, key, root):
+        if root is None or root.key == key:
+            return root
+        if key < root.key:
+            if root.left is None:
+                return root
+            if key < root.left.key:
+                root.left.left = self._splay(key, root.left.left)
+                root = self._rotate_right(root)
+            elif key > root.left.key:
+                root.left.right = self._splay(key, root.left.right)
+                if root.left.right:
+                    root.left = self._rotate_left(root.left)
+            return self._rotate_right(root) if root.left else root
         else:
-            self._insert_node(data, self.root)
-
-    def _insert_node(self, data, current_node):
-        if data < current_node.data:
-            if current_node.left_node:
-                self._insert_node(data, current_node.left_node)
-            else:
-                current_node.left_node = Node(data, current_node)
-        else:
-            if current_node.right_node:
-                self._insert_node(data, current_node.right_node)
-            else:
-                current_node.right_node = Node(data, current_node)
-
-    def find(self, data):
-        node = self.root
-        while node is not None:
-            if data < node.data:
-                node = node.left_node
-            elif data > node.data:
-                node = node.right_node
-            else:
-                self._splay(node)
-                return node.data
-        return None
-
-    def _splay(self, node):
-        while node.parent is not None:
-            if node.parent.parent is None:
-                if node == node.parent.left_node:
-                    self._rotate_right(node.parent)
-                else:
-                    self._rotate_left(node.parent)
-            elif (
-                node == node.parent.left_node
-                and node.parent == node.parent.parent.left_node
-            ):
-                self._rotate_right(node.parent.parent)
-                self._rotate_right(node.parent)
-            elif (
-                node == node.parent.right_node
-                and node.parent == node.parent.parent.right_node
-            ):
-                self._rotate_left(node.parent.parent)
-                self._rotate_left(node.parent)
-            elif node == node.parent.left_node:
-                self._rotate_right(node.parent)
-                self._rotate_left(node.parent)
-            else:
-                self._rotate_left(node.parent)
-                self._rotate_right(node.parent)
-        return node.data
-
-    def _rotate_right(self, node):
-        left_child = node.left_node
-        if left_child is None:
-            return
-        node.left_node = left_child.right_node
-        if left_child.right_node:
-            left_child.right_node.parent = node
-        left_child.parent = node.parent
-        if node.parent is None:
-            self.root = left_child
-        elif node == node.parent.left_node:
-            node.parent.left_node = left_child
-        else:
-            node.parent.right_node = left_child
-        left_child.right_node = node
-        node.parent = left_child
+            if root.right is None:
+                return root
+            if key > root.right.key:
+                root.right.right = self._splay(key, root.right.right)
+                root = self._rotate_left(root)
+            elif key < root.right.key:
+                root.right.left = self._splay(key, root.right.left)
+                if root.right.left:
+                    root.right = self._rotate_right(root.right)
+            return self._rotate_left(root) if root.right else root
 
     def _rotate_left(self, node):
-        right_child = node.right_node
-        if right_child is None:
+        temp = node.right
+        node.right = temp.left
+        temp.left = node
+        return temp
+
+    def _rotate_right(self, node):
+        temp = node.left
+        node.left = temp.right
+        temp.right = node
+        return temp
+
+    def insert(self, key, value):
+        if self.root is None:
+            self.root = SplayNode(key, value)
             return
-        node.right_node = right_child.left_node
-        if right_child.left_node:
-            right_child.left_node.parent = node
-        right_child.parent = node.parent
-        if node.parent is None:
-            self.root = right_child
-        elif node == node.parent.left_node:
-            node.parent.left_node = right_child
+        self.root = self._splay(key, self.root)
+        if self.root.key == key:
+            return
+        new_node = SplayNode(key, value)
+        if key < self.root.key:
+            new_node.right = self.root
+            new_node.left = self.root.left
+            self.root.left = None
         else:
-            node.parent.right_node = right_child
-        right_child.left_node = node
-        node.parent = right_child
+            new_node.left = self.root
+            new_node.right = self.root.right
+            self.root.right = None
+        self.root = new_node
 
-
-@lru_cache
-def fibonacci_lru(n):
-    if n <= 1:
-        return n
-    return fibonacci_lru(n - 1) + fibonacci_lru(n - 2)
+    def find(self, key):
+        self.root = self._splay(key, self.root)
+        return self.root.value if self.root and self.root.key == key else None
 
 
 def fibonacci_splay(n, tree):
-    if n <= 1:
+    if n < 2:
         return n
-
-    result = tree.find(n)
-    if result is None:
-        a, b = 0, 1
-        for i in range(2, n + 1):
-            a, b = b, a + b
-        result = b
-        tree.insert(n)
+    if (cached := tree.find(n)) is not None:
+        return cached
+    result = fibonacci_splay(n - 1, tree) + fibonacci_splay(n - 2, tree)
+    tree.insert(n, result)
     return result
 
 
-def measure_time(func, args):
-    start = timeit.default_timer()
-    func(*args)
-    return timeit.default_timer() - start
+n_values = list(range(0, 951, 50))
+lru_times = []
+splay_times = []
 
+for n in n_values:
+    tree = SplayTree()
+    lru_time = timeit.timeit(lambda: fibonacci_lru(n), number=5) / 5
+    splay_time = timeit.timeit(lambda: fibonacci_splay(n, tree), number=5) / 5
+    lru_times.append(lru_time)
+    splay_times.append(splay_time)
 
-def main():
-    ns = range(0, 1001, 50)
-    lru_times = []
-    splay_times = []
+plt.figure(figsize=(10, 5))
+plt.plot(n_values, lru_times, label="LRU Cache", marker="o")
+plt.plot(n_values, splay_times, label="Splay Tree", marker="s")
+plt.xlabel("n (Fibonacci number index)")
+plt.ylabel("Execution Time (s)")
+plt.title("Fibonacci Computation Performance: LRU Cache vs Splay Tree")
+plt.legend()
+plt.grid()
+plt.show()
 
-    for n in ns:
-        lru_times.append(measure_time(fibonacci_lru, (n,)))
-        splay_tree = SplayTree()
-        splay_times.append(measure_time(fibonacci_splay, (n, splay_tree)))
-
-    import matplotlib.pyplot as plt
-
-    plt.plot(ns, lru_times, label="LRU Cache", color="blue")
-    plt.plot(ns, splay_times, label="Splay Tree", color="orange")
-    plt.xlabel("n (Fibonacci index)")
-    plt.ylabel("Time (s)")
-    plt.title("Fibonacci Calculation Time: LRU Cache vs Splay Tree")
-    plt.legend()
-    plt.show()
-
-    print("n\tLRU Cache Time (s)\tSplay Tree Time (s)")
-    print("---------------------------------------------")
-    for i, n in enumerate(ns):
-        print(f"{n}\t{lru_times[i]:.8f}\t	{splay_times[i]:.8f}")
-
-
-if __name__ == "__main__":
-    main()
+table_format = "{:<10} {:<20} {:<20}"
+print(table_format.format("n", "LRU Cache Time (s)", "Splay Tree Time (s)"))
+print("-" * 50)
+for n, lru, splay in zip(n_values, lru_times, splay_times):
+    print(table_format.format(n, f"{lru:.10f}", f"{splay:.10f}"))
